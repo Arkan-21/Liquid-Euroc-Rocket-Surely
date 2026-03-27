@@ -44,19 +44,21 @@ class chamber_sizing:
         plt.figure(figsize=(12, 5))
 
         plt.subplot(1, 2, 1)
-        plt.plot(of_ratio, T)
+        plt.plot(of_ratio, T, label = {pi_p, supar})
         plt.xlabel('OF Ratio')
         plt.ylabel('Temperature (K)')
         plt.title('Chamber Temperature vs OF Ratio')
         plt.grid(True)
+        plt.legend()
 
         # Plot Isp vs OF
         plt.subplot(1, 2, 2)
-        plt.plot(of_ratio, Isp)
+        plt.plot(of_ratio, Isp, label = {pi_p, supar})
         plt.xlabel('OF Ratio')
         plt.ylabel('Specific Impulse (s)')
         plt.title('Specific Impulse vs OF Ratio')
         plt.grid(True)
+        plt.legend()
 
         plt.tight_layout()
         plt.show()
