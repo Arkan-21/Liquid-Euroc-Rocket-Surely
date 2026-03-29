@@ -11,12 +11,12 @@ class chamber_sizing:
         self.debug = True
 
     # -------------------------------------------------
-    # 🔥 CEA CALL (debugged version)
+    # CEA
     # -------------------------------------------------
     def run_cea(self, of, cr, eps):
         # Define reactants
         reac_names = [self.fuel, self.oxidiser]
-        if self.additives and self.additives.strip():
+        if self.additives and self.additives.strip(): #if not empty and not nan
             reac_names.append(self.additives)
         
         if self.debug:
@@ -61,7 +61,7 @@ class chamber_sizing:
         solution = cea.RocketSolution(solver)
         
         # Pressure ratios for nozzle expansion (use a single array)
-        pressure_ratios = [10.0, 50.0, 100.0, 300.0]
+        pressure_ratios = [40.0]
         
         try:
             # The solve method might need different parameters
@@ -136,7 +136,7 @@ class chamber_sizing:
                 raise
 
     # -------------------------------------------------
-    # 📐 GEOMETRY
+    # GEOMETRY
     # -------------------------------------------------
     def compute_geometry(self, cr, At, alpha=np.deg2rad(30)):
         Rt = np.sqrt(At / np.pi)
@@ -153,7 +153,7 @@ class chamber_sizing:
         return Vc, Lc, Rt, Rc
     
     # -------------------------------------------------
-    # 🔁 MAIN ITERATION LOOP
+    # MAIN ITERATION LOOP
     # -------------------------------------------------
     def iterate(self,
                 of=1.9,
