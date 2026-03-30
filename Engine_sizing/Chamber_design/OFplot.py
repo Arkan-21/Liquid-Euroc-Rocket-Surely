@@ -2,7 +2,7 @@ import numpy as np
 import cea
 from matplotlib import pyplot as plt
 
-class chamber_sizing:
+class OFplot:
     def __init__(self, oxidiser, fuel, additives,  chamber_pressure, nominal_thrust):
         self.oxidiser = oxidiser
         self.fuel = fuel
@@ -52,15 +52,15 @@ class chamber_sizing:
         optimal_mws = []
         optimal_gammas = []
         for i in range(num_combinations):
-            max_T = max(T[i])
-            idx = T[i].index(max_T)
+            max_ISP = max(Isp[i])
+            idx = Isp[i].index(max_ISP)
             optimal_of = of_ratio[idx]
-            optimal_ISP = Isp[i][idx]
+            optimal_T = Isp[i][idx]
             optimal_Mw = Mw[i][idx]
             optimal_gamma = gamma_list[i][idx]
             optimal_ofs.append(optimal_of)
-            optimal_temps.append(max_T)
-            optimal_isps.append(optimal_ISP)
+            optimal_temps.append(optimal_T)
+            optimal_isps.append(max_ISP)
             optimal_mws.append(optimal_Mw)
             optimal_gammas.append(optimal_gamma)
 
@@ -116,70 +116,9 @@ class chamber_sizing:
         self.optimal_mws = optimal_mws
         self.optimal_gammas = optimal_gammas
 
-    def throat_area(self, of_ratios, isps, temps, mws, gammas):
-        g0 = 9.81  # m/s^2
-
-        for i in range(len(isps)):
-            OF = of_ratios[i]
-            Isp = isps[i]
-            T = temps[i]
-            Mw = mws[i]
-            gamma = gammas[i]
-
-            v_e = Isp * g0  # Exhaust velocity (m/s)
-            m_dot = self.thrust / v_e  # Total mass flow rate (kg/s)
-
-            m_dot_ox = m_dot * OF / (OF + 1)  # Oxidizer mass flow rate (kg/s)
-            m_dot_fuel = m_dot / (OF + 1)  # Fuel mass flow rate (kg/s)
-
-            # Calculate throat area
-            R = 8314 / Mw  # Gas constant (J/kgK)
-            p_c = self.pc * 1e5  # Chamber pressure (Pa)
-
-            # Throat area calculation for choked flow
-            term1 = (2 / (gamma + 1)) ** ((gamma + 1) / (2 * (gamma - 1)))
-            term2 = np.sqrt(gamma * R * T) / p_c
-            A_t = m_dot / (p_c * term2 * term1)  # Throat area (m^2)
-
-            # Print results for this combination
-            print(f"\nCombination {i+1}:")
-            print(f"  O/F: {OF:.3f}")
-            print(f"  Temperature: {T:.1f} K")
-            print(f"  Specific Impulse: {Isp:.1f} s")
-            print(f"  Molecular Weight: {Mw:.3f} kg/mol")
-            print(f"  Specific Heat Ratio (gamma): {gamma:.3f}")
-            print(f"  Exhaust velocity (v_e): {v_e:.2f} m/s")
-            print(f"  Total mass flow rate (m_dot): {m_dot:.2f} kg/s")
-            print(f"  Oxidizer mass flow rate: {m_dot_ox:.2f} kg/s")
-            print(f"  Fuel mass flow rate: {m_dot_fuel:.2f} kg/s")
-            print(f"  Throat area (A_t): {A_t:.6f} m^2")
-
-    def geometry(self, characteristic_length, throat_area):
-        self.characteristic_length = characteristic_length
-        self.throat_area = throat_area
-
-        contraction_ratio = np.arange(1.5, 20, 0.01)
-        contraction_angle = np.arange(np.deg2rad(20), np.deg2rad(45), np.deg2rad(0.01))
-
-        for cr in contraction_ratio:
-            for alpha in contraction_angle:
-
-                throat_radius = np.sqrt(self.throat_area/np.pi)
-
-                L_chamber = (throat_radius*(np.sqrt(cr)-1)+1.5*throat_radius*(1/np.cos(alpha)-1))/(np.tan(alpha))
-                A_chamber = self.throat_area*cr
-                chamber_radius =np.sqrt(A_chamber/np.pi)
-
-                chmaber_volume = 1/3*np.pi()*(throat_radius**2+throat_radius*chamber_radius+chamber_radius**2)*L_chamber
-                chamber_area = 2*L_chamber*np.sqrt(np.pi()*cr*self.throat_area)+1/np.sin(alpha)*(cr-1)*self.throat_area
-                
-
-
-
 
 
 if __name__ == "__main__":
     # Example usage
-    chamber = chamber_sizing(oxidiser="O2(L)", fuel="C2H5OH(L)", additives="H2O", chamber_pressure=30, nominal_thrust=6000)
-    chamber.optimal_OF()
-    chamber.throat_area(chamber.optimal_ofs, chamber.optimal_isps, chamber.optimal_temps, chamber.optimal_mws, chamber.optimal_gammas)
+    of_plot = OFplot(oxidiser="O2(L)", fuel="C2H5OH(L)", additives="H2O", chamber_pressure=30, nominal_thrust=6000)
+    of_plot.optimal_OF()

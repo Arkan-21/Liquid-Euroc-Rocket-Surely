@@ -29,7 +29,7 @@ class chamber_sizing:
         
         # Set reactant temperatures
         T_fuel = 298.15   # K 
-        T_ox = 120.15     # K
+        T_ox = 90     # K
         if self.additives and self.additives.strip():
             T_add = T_fuel      # K only additives to fuel
         T_reactant = np.array([T_fuel, T_ox, T_add])
@@ -72,7 +72,7 @@ class chamber_sizing:
                 pressure_ratios,   # pressure ratios
                 supar=[eps],       # exit pressure ratio
                 ac_at=cr,          # contraction ratio
-                iac=True,
+                iac=True,          #infinite area combsustor
                 hc=hc
             )
             
@@ -228,7 +228,7 @@ class chamber_sizing:
                 Lc = 0.1
             
             # --- Print Results ---
-            print(f"\n📊 Results:")
+            print(f"\n Results:")
             print(f"  O/F         = {of:.4f}")
             print(f"  CR          = {cr:.4f}")
             print(f"  ER          = {eps:.3f}")
@@ -248,12 +248,12 @@ class chamber_sizing:
             At_error = abs(At_new - At) / At if At > 0 else 1.0
             Lstar_error = abs(Lstar_new - Lstar_target) / Lstar_target if Lstar_target > 0 else 1.0
             
-            print(f"\n📈 Errors:")
+            print(f"\n Errors:")
             print(f"  At error    = {At_error:.2e}")
             print(f"  L* error    = {Lstar_error:.2e}")
             
             if At_error < tol and Lstar_error < tol:
-                print(f"\n✅ Converged in {i+1} iterations!")
+                print(f"\n Converged in {i+1} iterations!")
                 break
             
             # --- Update Variables ---
@@ -292,14 +292,14 @@ class chamber_sizing:
         print("FINAL ENGINE DESIGN SUMMARY")
         print("="*60)
         
-        print("\n📋 OPERATING CONDITIONS:")
+        print("\n OPERATING CONDITIONS:")
         print(f"  Thrust              : {self.thrust:.1f} N")
         print(f"  Chamber Pressure    : {self.pc:.1f} bar")
         print(f"  O/F Ratio           : {self.of:.3f}")
         print(f"  Specific Impulse    : {self.Isp:.2f} s")
         print(f"  Mass flow           : {self.m_dot:.4f} kg/s")
         
-        print("\n📐 GEOMETRY:")
+        print("\n GEOMETRY:")
         print(f"  Throat area (At)    : {self.At:.6e} m²  ({self.At*1e4:.2f} cm²)")
         print(f"  Throat radius       : {self.Rt:.4f} m  ({self.Rt*1000:.1f} mm)")
         print(f"  Chamber radius      : {self.Rc:.4f} m  ({self.Rc*1000:.1f} mm)")
@@ -308,7 +308,7 @@ class chamber_sizing:
         print(f"  Expansion ratio     : {self.eps:.3f}")
         print(f"  Characteristic L*   : {self.Lstar:.3f} m")
         
-        print("\n🔥 GAS PROPERTIES (Chamber):")
+        print("\n GAS PROPERTIES (Chamber):")
         print(f"  Gamma (γ)           : {self.gamma:.3f}")
         print(f"  Molecular weight    : {self.Mw:.3f} g/mol")
         print(f"  Temperature         : {self.T:.1f} K  ({self.T-273.15:.1f} °C)")
