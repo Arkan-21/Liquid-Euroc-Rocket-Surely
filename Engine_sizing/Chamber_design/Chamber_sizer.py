@@ -135,28 +135,23 @@ class chamber_sizing:
                 print(f"     Simplified approach also failed: {e2}")
                 raise
 
-    # -------------------------------------------------
-    # GEOMETRY
-    # -------------------------------------------------
-    def compute_geometry(self, cr, At, alpha=np.deg2rad(30)):
-        Rt = np.sqrt(At / np.pi)
-        Rc = Rt * np.sqrt(cr)
-        
-        # More robust length calculation
-        if np.tan(alpha) > 0:
-            Lc = (Rt * (np.sqrt(cr) - 1) + 1.5 * Rt * (1 / np.cos(alpha) - 1)) / np.tan(alpha)
-        else:
-            Lc = 0.1  # Fallback
-            
-        Vc = (1 / 3) * np.pi * (Rt**2 + Rt * Rc + Rc**2) * Lc
-        
-        return Vc, Lc, Rt, Rc
+
+    def throat_area(self, m_dot, T, pc, gamma, Mw):
+
+        Gamma = np.sqrt(gamma*(0.5*(1+gamma))**((gamma+1)/(gamma-1)))
+        throat_area = m_dot * np.sqrt(8314.462618/Mw*T) / (pc*1e5*Gamma)
+        return throat_area
     
+    def cr(self, throat_area):
+        Dt = 2 * np.sqrt(throat_area / np.pi) * 39.37008  # Convert m to inches
+        cr = 1.302 * Dt**(-0.481)
+        return cr
+
+  
     # -------------------------------------------------
     # MAIN ITERATION LOOP
     # -------------------------------------------------
     def iterate(self,
-                of=1.9,
                 cr_init=3.0,
                 eps=10.0,
                 Lstar_target=1.2,
@@ -164,128 +159,11 @@ class chamber_sizing:
                 max_iter=100,
                 relaxation=0.5):
         
-        cr = cr_init
-        At = 1e-4
-        Lstar = 0.0
-        
-        print("\n" + "="*60)
-        print("Starting chamber sizing iteration...")
-        print("="*60)
-        
-        for i in range(max_iter):
-            print(f"\n{'='*60}")
-            print(f"Iteration {i+1}/{max_iter}")
-            print(f"{'='*60}")
-            
-            # --- CEA Calculation ---
-            try:
-                Isp, gamma, Mw, T = self.run_cea(of, cr, eps)
-            except Exception as e:
-                print(f" CEA calculation failed at iteration {i+1}")
-                print(f"   Error: {e}")
-                
-                if i == 0:
-                    print("\n📝 Troubleshooting suggestions:")
-                    print("   1. Check if CEA is properly installed: pip install cea")
-                    print("   2. Verify propellant names in CEA database")
-                    print("   3. Try alternative naming: 'O2' for oxidizer, 'C2H5OH' for fuel")
-                    print("   4. Check O/F ratio range (LOX/ethanol: 1.0-2.5)")
-                raise
-            
-            # --- Flow Properties ---
-            g0 = 9.80665
-            v_e = Isp * g0
-            
-            if v_e <= 0:
-                raise ValueError(f"Invalid exhaust velocity: {v_e:.2f} m/s")
-            
-            m_dot = self.thrust / v_e
-            
-            # --- Throat Area using characteristic velocity ---
-            R_gas = 8314.462618 / Mw
-            pc_pa = self.pc * 1e5
-            
-            # C* = sqrt(γ*R*T) / (γ * sqrt((2/(γ+1))^((γ+1)/(γ-1))))
-            gamma_term = (2/(gamma+1))**((gamma+1)/(2*(gamma-1)))
-            c_star = np.sqrt(gamma * R_gas * T) / gamma_term
-            
-            At_new = m_dot * c_star / pc_pa
-            
-            # Validate At_new
-            if np.isnan(At_new) or np.isinf(At_new) or At_new <= 0:
-                print(f"  Invalid throat area: {At_new}")
-                At_new = At
-            
-            # --- Geometry ---
-            try:
-                Vc, Lc, Rt, Rc = self.compute_geometry(cr, At_new)
-                Lstar_new = Vc / At_new
-            except Exception as e:
-                print(f"  Geometry calculation error: {e}")
-                Lstar_new = Lstar_target
-                Rt = np.sqrt(At_new / np.pi)
-                Rc = Rt * np.sqrt(cr)
-                Lc = 0.1
-            
-            # --- Print Results ---
-            print(f"\n Results:")
-            print(f"  O/F         = {of:.4f}")
-            print(f"  CR          = {cr:.4f}")
-            print(f"  ER          = {eps:.3f}")
-            print(f"  Isp         = {Isp:.2f} s")
-            print(f"  C*          = {c_star:.1f} m/s")
-            print(f"  At          = {At_new:.6e} m²  ({At_new*1e4:.2f} cm²)")
-            print(f"  Rt          = {Rt:.4f} m  ({Rt*1000:.1f} mm)")
-            print(f"  Rc          = {Rc:.4f} m  ({Rc*1000:.1f} mm)")
-            print(f"  Lc          = {Lc:.3f} m  ({Lc*1000:.1f} mm)")
-            print(f"  L*          = {Lstar_new:.3f} m  (target: {Lstar_target:.3f})")
-            print(f"  m_dot       = {m_dot:.4f} kg/s")
-            print(f"  γ           = {gamma:.3f}")
-            print(f"  T           = {T:.1f} K")
-            print(f"  Mw          = {Mw:.3f} g/mol")
-            
-            # --- Convergence Check ---
-            At_error = abs(At_new - At) / At if At > 0 else 1.0
-            Lstar_error = abs(Lstar_new - Lstar_target) / Lstar_target if Lstar_target > 0 else 1.0
-            
-            print(f"\n Errors:")
-            print(f"  At error    = {At_error:.2e}")
-            print(f"  L* error    = {Lstar_error:.2e}")
-            
-            if At_error < tol and Lstar_error < tol:
-                print(f"\n Converged in {i+1} iterations!")
-                break
-            
-            # --- Update Variables ---
-            if not np.isnan(At_new) and not np.isinf(At_new) and At_new > 0:
-                At = relaxation * At_new + (1 - relaxation) * At
-            
-            if Lstar_new > 0 and not np.isnan(Lstar_new) and not np.isinf(Lstar_new):
-                cr_correction = (Lstar_target / Lstar_new) ** (1/3)
-                cr_new = cr * cr_correction
-                cr = relaxation * cr_new + (1 - relaxation) * cr
-                cr = np.clip(cr, 1.5, 15.0)
-        
-        # Store results
-        self.At = At
-        self.cr = cr
-        self.eps = eps
-        self.Isp = Isp
-        self.gamma = gamma
-        self.Mw = Mw
-        self.T = T
-        self.Lstar = Lstar_new
-        self.Lc = Lc
-        self.Rt = Rt
-        self.Rc = Rc
-        self.m_dot = m_dot
-        self.of = of
-        self.c_star = c_star
-        
-        return At, cr, eps
+
+
     
     # -------------------------------------------------
-    # 📊 FINAL REPORT
+    #  FINAL REPORT
     # -------------------------------------------------
     def report(self):
         print("\n" + "="*60)
