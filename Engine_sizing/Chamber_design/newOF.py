@@ -21,11 +21,6 @@ class OFplot:
         """
 
 
-
-
-
-
-
         # Using (L) suffix ensures CEA uses liquid-phase enthalpies for LOX/Ethanol
         reac_names = [self.fuel, self.oxidiser, f"{self.additives}(L)"]
         T_reactant = np.array([298.15, 90.17, 298.15]) # Standard temps for Eth, LOX, Water
@@ -39,12 +34,13 @@ class OFplot:
         solution = cea.RocketSolution(solver)        
 
         # Define the ranges you want to test
-        of_ratios = np.arange(0, 5.0, 0.01)
+        of_ratios = np.arange(0, 7.0, 0.01)
         pi_list = [30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]   # Pressure ratios
         
         plt.figure(figsize=(10, 6))
 
         optimal_of = []
+        cr = 1.0  # Nozzle contraction ratio (not used in this specific plot, but can be added for more complex analyses)
         
 
 
@@ -59,7 +55,7 @@ class OFplot:
                 hc = reac.calc_property(cea.ENTHALPY, weights, T_reactant)/cea.R
                     
                 # Passing single values for pi and supar ensures index 2 is ALWAYS the exit
-                solver.solve(solution, weights, self.pc, [pi], hc=hc)
+                solver.solve(solution, weights,  self.pc, [pi], cr=cr, hc=hc)
                     
                 # solution.Isp[0]=Chamber, [1]=Throat, [2]=Exit
                 isp_seconds = solution.Isp[2] / 9.80665
@@ -75,9 +71,9 @@ class OFplot:
             plt.plot(of_ratios, isp_results, label=label)
             print(f"Geometry [Pi:{pi}] -> Best O/F: {best_of:.2f}, Isp: {max_isp:.1f}s, Temp: {temp_results[isp_results.index(max_isp)]:.1f}K")
 
-        plt.axvline(x=1.6, color='k', linestyle='--', alpha=0.3, label="Typical LOX/Eth Opt")
+        #plt.axvline(x=1.6, color='k', linestyle='--', alpha=0.3, label="Typical LOX/Eth Opt")
         plt.xlabel('Oxidizer/Fuel Ratio')
-        plt.ylabel('Vacuum Isp (s)')
+        plt.ylabel(' Isp (s)')
         plt.title(f'LOX/Ethanol Performance @ Pc={self.pc} bar')
         plt.legend(fontsize='small')
         plt.grid(True, which='both', linestyle=':', alpha=0.5)
