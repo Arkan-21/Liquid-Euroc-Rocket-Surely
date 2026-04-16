@@ -65,8 +65,10 @@ class chamber_sizing:
         
         # At = (m_dot * sqrt(R_spec * T)) / (Pc * Gamma)
         R_univ = 8.31446261815324 # J/(mol*K)
-        throat_area = (m_dot * np.sqrt((R_univ / Mw) * T)) / (pc * 1e5 * Gamma)
+        R_spec = R_univ / Mw  # Specific gas constant for the mixture in J/(kg*K)
+        throat_area = (m_dot * np.sqrt(R_spec * T)) / (pc * 1e5 * Gamma)
         self.At = throat_area
+        self.R_spec = R_spec
     
     def calculate_cr(self, propellant_type='Liq_Liq'):
         """
@@ -142,14 +144,14 @@ class chamber_sizing:
         
         # Transform back from log scale
         cr = np.exp(log_result)
-        self.cr = cr
+        self.cr = 8
         
 
     def chamber_geometry(self, L_star=1.2, conv_angle=30):
             """
             L_star: Characteristic length (m)
             conv_angle: Convergence half-angle (degrees) - typical 20-45
-            div_angle: Divergence half-angle (degrees) - typical 12-18
+            
             """
             self.L_star = L_star
             self.conv_angle = np.radians(conv_angle)
@@ -252,3 +254,4 @@ if __name__ == "__main__":
 
     # 8. Final report
     engine.report()
+    print(engine.R_spec)
