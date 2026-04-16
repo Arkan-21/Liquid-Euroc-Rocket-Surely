@@ -1,5 +1,7 @@
 import numpy as np
 import cea
+import pandas as pd
+from scipy.interpolate import CubicSpline
 
 class chamber_sizing:
     def __init__(self, oxidiser, fuel, additives, chamber_pressure, nominal_thrust):
@@ -46,7 +48,7 @@ class chamber_sizing:
             # Indexing: 0 is Chamber, -1 is Exit
             Isp = solution.Isp[-1] / 9.80665 
             T = solution.T[0]               # Combustion Temperature
-            Mw = solution.MW[0]             # Chamber Molecular Weight
+            Mw = solution.MW[0]   * 1e-3    # Chamber Molecular Weight in kg/mol
             gamma = solution.cp[0] / solution.cv[0] 
             
             return Isp, gamma, Mw, T
@@ -58,48 +60,92 @@ class chamber_sizing:
     def throat_area(self, m_dot, T, pc, gamma, Mw):
         # Calculate the nozzle flow parameter (Gamma)
         # Using the standard equation for sonic flow at the throat
-        exp = (gamma + 1) / (gamma - 1)
-        Gamma = np.sqrt(gamma * (2 / (gamma + 1))**exp)
+        exp = (1+ gamma) / (1 - gamma )
+        Gamma = np.sqrt(gamma * (0.5*(gamma + 1))**exp)
         
         # At = (m_dot * sqrt(R_spec * T)) / (Pc * Gamma)
-        R_univ = 8314.46
+        R_univ = 8.31446261815324 # J/(mol*K)
         throat_area = (m_dot * np.sqrt((R_univ / Mw) * T)) / (pc * 1e5 * Gamma)
-        return throat_area
+        self.At = throat_area
     
-    def cr(self, throat_area):
-        # Empirical relationship for CR based on throat diameter in inches
-        Dt_inches = 2 * np.sqrt(throat_area / np.pi) * 39.3701
-        return 1.302 * Dt_inches**(-0.481)
-
-    def iterate(self, of_ratio=1.5, cr_init=3.0, pi=10.0, tol=1e-4, max_iter=100, relaxation=0.5):
-        print(f"--- Starting Sizing: O/F={of_ratio}, P_ratio={pi} ---")
-        current_cr = cr_init
-        self.of = of_ratio
-        self.pi = pi
+    def calculate_cr(self, propellant_type='Liq_Liq'):
+        """
+        Returns the contraction ratio based on throat diameter and propellant type.
+        Performs cubic spline interpolation on log-transformed data.
         
-        for i in range(max_iter):
-            isp, gamma, mw, temp = self.run_cea(self.of, current_cr, self.pi)
-            m_dot = self.thrust / (isp * 9.80665)
-            at = self.throat_area(m_dot, temp, self.pc, gamma, mw)
-            new_cr_target = self.cr(at)
-            
-            if self.debug:
-                print(f"Iter {i+1}: CR_in={current_cr:.3f}, CR_out={new_cr_target:.3f}, Isp={isp:.1f}s")
-            
-            if abs(new_cr_target - current_cr) < tol:
-                self.cr_val = current_cr
-                self.Isp, self.gamma, self.Mw, self.T = isp, gamma, mw, temp
-                self.m_dot, self.At = m_dot, at
-                self.Rt = np.sqrt(at / np.pi)
-                self.Rc = self.Rt * np.sqrt(self.cr_val)
-                print(f"Converged in {i+1} steps.")
-                return True
+        Parameters:
+        -----------
+        propellant_type : str
+            Either 'Liq_Liq' or 'Gas_Liq' (both for 34 bar chamber pressure)
+        
+        Returns:
+        --------
+        float : Interpolated contraction ratio
+        """
+        
+        # Data from the CSV files (as provided)
+        if propellant_type == 'Liq_Liq':
+            # Data from Liq_Liq_34barPC.csv
+            data = np.array([
+                [0.2039908382403323, 12.531716288281148],
+                [0.27404024572728114, 10.802640572601012],
+                [0.376283004688613, 9.20218263630338],
+                [0.5638987547578291, 7.519642517601275],
+                [0.9223036875932982, 5.964958350041419],
+                [1.3086365745107398, 5.051136589214079],
+                [1.9187085772178882, 4.2268064288737595],
+                [3.036945319878672, 3.495241239282929],
+                [5.189230005845924, 2.8057296834486847],
+                [7.282822830493199, 2.4767495887985858],
+                [11.034040200615467, 2.1605281145202024],
+                [18.245495243701868, 1.8846805323975047],
+                [28.87909714229446, 1.713839479342371],
+                [44.23506942114378, 1.6054569578289242]
+            ])
+        elif propellant_type == 'Gas_Liq':
+            # Data from Gas_Liq_34barPC.csv
+            data = np.array([
+                [0.23258948572929233, 14.798880290379048],
+                [0.33001614540460755, 12.383747943992933],
+                [0.50549665836649, 9.940787150341539],
+                [0.679081617919856, 8.620240295978416],
+                [0.9426935038960705, 7.34311440238132],
+                [1.3522715402070757, 6.144740419456792],
+                [1.816634650678577, 5.3284652584387],
+                [2.549555192913489, 4.539030077860336],
+                [3.578172242439654, 3.959504885040513],
+                [5.852400676896963, 3.2355433986649453],
+                [7.862085049632657, 2.9075097347640173],
+                [14.188781765858016, 2.447505347432082],
+                [21.032134799193297, 2.2522391210399166],
+                [32.56977383414044, 2.097315645165334],
+                [44.23506942114378, 2.0000000000000004]
+            ])
+        else:
+            raise ValueError("propellant_type must be either 'Liq_Liq' or 'Gas_Liq'")
+        
+        # Extract diameters and contraction ratios
+        diameters = data[:, 0]
+        contraction_ratios = data[:, 1]
+        
+        # Apply log transformation
+        log_diameters = np.log(diameters)
+        log_contraction_ratios = np.log(contraction_ratios)
+        
+        # Create interpolation function on log-log scale
+        interp_func = CubicSpline(log_diameters, log_contraction_ratios, 
+                                    extrapolate=True)
+        
+        # Interpolate for the requested throat diameter
+        throa_D = 2 * np.sqrt(self.At / np.pi) *39.37008 # Convert throat area to diameter in inches
+        log_result = interp_func(np.log(throa_D))
+        
+        # Transform back from log scale
+        cr = np.exp(log_result)
+        self.cr = cr
+        
 
-            current_cr =new_cr_target
-
-        return False
-
-    def geometry(self, L_star=1.2, conv_angle=30, div_angle=15):
+    def chamber_geometry(self, L_star=1.2, conv_angle=30):
             """
             L_star: Characteristic length (m)
             conv_angle: Convergence half-angle (degrees) - typical 20-45
@@ -107,28 +153,20 @@ class chamber_sizing:
             """
             self.L_star = L_star
             self.conv_angle = np.radians(conv_angle)
-            self.div_angle = np.radians(div_angle)
+
             
             # 1. Chamber Volume from L*
             self.Vc = self.At * self.L_star
+            self.Ac = self.At * self.cr
             
             # 2. Chamber Length (Lc)
             # Using the formula: Vc = V_cyl + V_frustum
             # Lc calculation accounting for the convergent cone volume
-            term_frustum = (1/3) * self.Rt * (1/np.tan(self.conv_angle)) * (self.cr_val**(1/3) - 1)
-            self.Lc = (self.Vc / (self.At * self.cr_val)) - term_frustum
+            term_frustum = (1/3) * np.sqrt(self.At / np.pi) * (1/np.tan(self.conv_angle)) * (self.cr**(1/3) - 1)
+            self.Lc = (self.Vc / (self.At * self.cr)) - term_frustum
             
-            # 3. Nozzle Exit Geometry
-            # Expansion Ratio epsilon = Ae / At = pi (derived from pressure ratio)
-            # However, for this simplified sizing, we can approximate epsilon if not returned by CEA
-            # In your iterate, we pass 'pi' (Pc/Pe). Let's assume conical nozzle for length:
-            self.Ae = self.At * self.pi # Note: 'pi' in your code is Pc/Pe, not epsilon. 
-                                        # Ideally, get epsilon from CEA solution.
-                                        # Assuming for now self.pi is a placeholder for epsilon for geom:
-            self.Re = np.sqrt(self.Ae / np.pi)
-            self.Ln = (self.Re - self.Rt) / np.tan(self.div_angle)
 
-            print(f"Geometry: Lc={self.Lc:.2f} m, At={self.At*1e4:.4f} cm^2, Ae={self.Ae*1e4:.4f} cm^2, Ln={self.Ln*1000:.2f} mm")
+            print(f"Geometry: Lc={self.Lc:.2f} m, At={self.At*1e4:.4f} cm^2, Ac={self.Ac*1e4:.4f} cm^2, CR={self.cr:.3f}")
 
 
     def report(self):
@@ -143,8 +181,8 @@ class chamber_sizing:
         print(f" {'Specific Impulse':<25} | {self.Isp:.2f} s")
         print(f" {'Mass Flow Rate':<25} | {self.m_dot:.4f} kg/s")
         print("-" * 50)
-        print(f" {'Throat Radius (Rt)':<25} | {self.Rt*1000:.2f} mm")
-        print(f" {'Chamber Radius (Rc)':<25} | {self.Rc*1000:.2f} mm")
+        print(f" {'Throat Diameter (Dt)':<25} | {2*self.Rt*1000:.2f} mm")
+        print(f" {'Chamber Diameter (Dc)':<25} | {2*self.Rc*1000:.2f} mm")
         print(f" {'Chamber Length (Lc)':<25} | {self.Lc*1000:.2f} mm")
         print(f" {'Contraction Ratio':<25} | {self.cr_val:.3f}")
         print(f" {'L* (Characteristic)':<25} | {self.L_star:.3f} m")
@@ -162,6 +200,11 @@ if __name__ == "__main__":
     chamber_pressure = 30.0  # bar
     nominal_thrust = 6000.0  # N
 
+    # Design assumptions
+    of = 1.49              # O/F ratio (initial guess)
+    expansion_ratio = 30 # Pc/Pe (pressure ratio)
+    cr_guess = 5         # Initial contraction ratio guess
+
     # 1. Initialize the sizing object
     engine = chamber_sizing(
         oxidiser=oxidizer,
@@ -171,41 +214,41 @@ if __name__ == "__main__":
         nominal_thrust=nominal_thrust
     )
 
-    # Disable internal debug prints for a cleaner sweep output if desired
-    engine.debug = False
+    # 2. Run CEA
+    Isp, gamma, Mw, T = engine.run_cea(of, cr_guess, expansion_ratio)
 
-    # 2. Define the pressure ratio range
-    # From 30 to 100 in steps of 10
-    pr_range = np.arange(30, 101, 10)
-    
-    results = []
+    engine.Isp = Isp
+    engine.gamma = gamma
+    engine.Mw = Mw
+    engine.T = T
+    engine.of = of
 
-    print(f"{'PR':>5} | {'Isp (s)':>10} | {'At (cm2)':>10} | {'CR':>8} | {'Rc (mm)':>8}")
-    print("-" * 50)
+    # 3. Compute mass flow from thrust
+    g0 = 9.80665
+    m_dot = nominal_thrust / (Isp * g0)
+    engine.m_dot = m_dot
 
-    for pr in pr_range:
-        # Run the iteration for each pressure ratio
-        # We use the previous CR as the next starting guess for faster convergence
-        success = engine.iterate(
-            of_ratio=1.5,
-            cr_init=0.1, 
-            pi=float(pr),
-            tol=1e-4,
-            relaxation=0.5
-        )
+    # 4. Compute throat area
+    engine.throat_area(m_dot, T, chamber_pressure, gamma, Mw)
 
-        if success:
-            # Store or print the results
-            engine.geometry(L_star=0.6, conv_angle=30)
-            
-            print(f"{pr:5.0f} | {engine.Isp:10.2f} | {engine.At*1e4:10.4f} | {engine.cr_val:8.3f} | {engine.Rc*1000:8.2f}")
-            results.append({
-                'pr': pr,
-                'isp': engine.Isp,
-                'cr': engine.cr_val,
-                'rc': engine.Rc
-            })
-        else:
-            print(f"{pr:5.0f} | FAILED TO CONVERGE")
+    # 5. Compute contraction ratio from empirical relation
+    engine.calculate_cr()
+    engine.cr_val = engine.cr
 
-    print("-" * 50)
+    # 6. Re-run CEA with updated CR (optional but better)
+    Isp, gamma, Mw, T = engine.run_cea(of, engine.cr, expansion_ratio)
+
+    engine.Isp = Isp
+    engine.gamma = gamma
+    engine.Mw = Mw
+    engine.T = T
+
+    # 7. Compute geometry
+    engine.chamber_geometry()
+
+    # Derived radii
+    engine.Rt = np.sqrt(engine.At / np.pi)
+    engine.Rc = np.sqrt(engine.Ac / np.pi)
+
+    # 8. Final report
+    engine.report()
